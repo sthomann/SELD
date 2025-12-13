@@ -27,8 +27,6 @@
 #include <math.h>
 /* USER CODE END Includes */
 
-
-
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
@@ -46,21 +44,25 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-DMA_HandleTypeDef handle_GPDMA1_Channel1;
-DMA_HandleTypeDef handle_GPDMA1_Channel0;
-
 MDF_HandleTypeDef MdfHandle0;
 MDF_FilterConfigTypeDef MdfFilterConfig0;
+MDF_HandleTypeDef MdfHandle1;
+MDF_FilterConfigTypeDef MdfFilterConfig1;
 MDF_HandleTypeDef MdfHandle2;
-MDF_FilterConfigTypeDef MdfFilterConfig2;
+DMA_NodeTypeDef Node_GPDMA1_Channel0;
+DMA_QListTypeDef List_GPDMA1_Channel0;
+DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 MDF_DmaConfigTypeDef pDmaConfig;
 
+/* Increase buffer to hold, for example, 256 samples (128 pairs) */
+#define SAMPLES_COUNT 256 
+volatile int32_t INTLVD[SAMPLES_COUNT];
 
-
+uint8_t INTLVD_ready = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,6 +106,8 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  pDmaConfig.MsbOnly = DISABLE;
+
 
   /* USER CODE END Init */
 
@@ -124,60 +128,45 @@ int main(void)
   MX_USART1_UART_Init();
   MX_MDF1_Init();
   /* USER CODE BEGIN 2 */
+  pDmaConfig.Address = (uint32_t) INTLVD;
+  pDmaConfig.DataLength = SAMPLES_COUNT * 4; // Length is in Bytes for MDF DMA config
   
-      HAL_StatusTypeDef st = HAL_MDF_AcqStart(&MdfHandle2, &MdfFilterConfig2);
-      if (st != HAL_OK) {
-          printf("HAL_MDF_AcqStart failed: %d\r\n", (int)st);
-          printf("MDF error: 0x%08lX\r\n", (unsigned long)HAL_MDF_GetError(&MdfHandle2));
-          HAL_Delay(HAL_MAX_DELAY);
-        }
-      HAL_Delay(2);
-      
-      HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle0, &MdfFilterConfig2);
-      if (st2 != HAL_OK) {
-          printf("HAL_MDF_AcqStart failed: %d\r\n", (int)st2  );
-          printf("MDF error: 0x%08lX\r\n", (unsigned long)HAL_MDF_GetError(&MdfHandle0));
-          HAL_Delay(HAL_MAX_DELAY);
-        }
 
+  // start interleaved transfer
+  // 2. Start the Interface provider (Handle 2) purely to generate the Clock
+  HAL_MDF_AcqStart(&MdfHandle2, NULL); // Just start it to enable the SITF/Clock
+  HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1);
 
-  int32_t pValue = 1;
+  HAL_StatusTypeDef st1 = HAL_MDF_AcqStart_DMA(&MdfHandle0, &MdfFilterConfig0, &pDmaConfig);
 
-    // for (int i = 0; i < 20; ++i) {
-    //   int pg7 = HAL_GPIO_ReadPin(GPIOG, GPIO_PIN_7);
-    //   int pb14 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_14);
-    //   printf("pins: PG7(CCK0)=%d PB14(SDI2)=%d\r\n", pg7, pb14);
-    //   HAL_Delay(25);
-    // }
-
-
+  if(st1 != HAL_OK){
+    HAL_UART_Transmit(&huart1, &st1, sizeof(st1), HAL_MAX_DELAY);
+    HAL_Delay(HAL_MAX_DELAY);
+  }
+   if(st2 != HAL_OK){
+    HAL_UART_Transmit(&huart1, &st2, sizeof(st2), HAL_MAX_DELAY);
+    HAL_Delay(HAL_MAX_DELAY);
+  }
+   int8_t spacer = 1;
+  
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
     while (1)
     {
-      
-      
-      if(HAL_MDF_GetAcqValue(&MdfHandle2, &pValue)== HAL_OK){
-      // int16_t pVal16 = (int16_t)  (pValue >> 8); // cast down to 16 bits
-      int16_t pVal16 = (int16_t)  (pValue); // cast down to 16 bits
-      // HAL_UART_Transmit(&huart1, (uint8_t*)&pVal16, sizeof(pVal16), HAL_MAX_DELAY);  // print
+      if (INTLVD_ready)
+      {
+        
+        HAL_UART_Transmit(&huart1, (uint8_t*)INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
+        HAL_UART_Transmit(&huart1, &spacer, sizeof(spacer), HAL_MAX_DELAY);
+        INTLVD_ready = 0;
       }
-
-      
-
-      if(HAL_MDF_GetAcqValue(&MdfHandle0, &pValue)== HAL_OK){
-      // int16_t pVal16 = (int16_t)  (pValue >> 8); // cast down to 16 bits
-      int16_t pVal16 = (int16_t) (pValue); // cast down to 16 bits
-      HAL_UART_Transmit(&huart1, (uint8_t*)&pVal16, sizeof(pVal16), HAL_MAX_DELAY);  // print
-
-      // HAL_UART_Transmit(&huart1, (uint8_t*)&pVal16, sizeof(pVal16), HAL_MAX_DELAY);  // print
-      }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    }
+    
     
   /* USER CODE END 3 */
 }
@@ -270,53 +259,14 @@ static void MX_GPDMA1_Init(void)
   /* Peripheral clock enable */
   __HAL_RCC_GPDMA1_CLK_ENABLE();
 
+  /* GPDMA1 interrupt Init */
+    HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+
   /* USER CODE BEGIN GPDMA1_Init 1 */
 
+  
   /* USER CODE END GPDMA1_Init 1 */
-  handle_GPDMA1_Channel1.Instance = GPDMA1_Channel1;
-  handle_GPDMA1_Channel1.Init.Request = DMA_REQUEST_SW;
-  handle_GPDMA1_Channel1.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
-  handle_GPDMA1_Channel1.Init.Direction = DMA_MEMORY_TO_MEMORY;
-  handle_GPDMA1_Channel1.Init.SrcInc = DMA_SINC_FIXED;
-  handle_GPDMA1_Channel1.Init.DestInc = DMA_DINC_FIXED;
-  handle_GPDMA1_Channel1.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
-  handle_GPDMA1_Channel1.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
-  handle_GPDMA1_Channel1.Init.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
-  handle_GPDMA1_Channel1.Init.SrcBurstLength = 1;
-  handle_GPDMA1_Channel1.Init.DestBurstLength = 1;
-  handle_GPDMA1_Channel1.Init.TransferAllocatedPort = DMA_SRC_ALLOCATED_PORT0|DMA_DEST_ALLOCATED_PORT0;
-  handle_GPDMA1_Channel1.Init.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
-  handle_GPDMA1_Channel1.Init.Mode = DMA_NORMAL;
-  if (HAL_DMA_Init(&handle_GPDMA1_Channel1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_DMA_ConfigChannelAttributes(&handle_GPDMA1_Channel1, DMA_CHANNEL_NPRIV) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  handle_GPDMA1_Channel0.Instance = GPDMA1_Channel0;
-  handle_GPDMA1_Channel0.Init.Request = DMA_REQUEST_SW;
-  handle_GPDMA1_Channel0.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
-  handle_GPDMA1_Channel0.Init.Direction = DMA_MEMORY_TO_MEMORY;
-  handle_GPDMA1_Channel0.Init.SrcInc = DMA_SINC_FIXED;
-  handle_GPDMA1_Channel0.Init.DestInc = DMA_DINC_FIXED;
-  handle_GPDMA1_Channel0.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
-  handle_GPDMA1_Channel0.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
-  handle_GPDMA1_Channel0.Init.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
-  handle_GPDMA1_Channel0.Init.SrcBurstLength = 1;
-  handle_GPDMA1_Channel0.Init.DestBurstLength = 1;
-  handle_GPDMA1_Channel0.Init.TransferAllocatedPort = DMA_SRC_ALLOCATED_PORT0|DMA_DEST_ALLOCATED_PORT0;
-  handle_GPDMA1_Channel0.Init.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
-  handle_GPDMA1_Channel0.Init.Mode = DMA_NORMAL;
-  if (HAL_DMA_Init(&handle_GPDMA1_Channel0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_DMA_ConfigChannelAttributes(&handle_GPDMA1_Channel0, DMA_CHANNEL_NPRIV) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN GPDMA1_Init 2 */
 
   /* USER CODE END GPDMA1_Init 2 */
@@ -365,6 +315,8 @@ static void MX_MDF1_Init(void)
 
   /* USER CODE BEGIN MDF1_Init 0 */
   MdfHandle0.Init.FilterBistream = MDF_BITSTREAM2_FALLING;
+  MdfHandle1.Init.FilterBistream = MDF_BITSTREAM2_RISING;
+
   /* USER CODE END MDF1_Init 0 */
 
   /* USER CODE BEGIN MDF1_Init 1 */
@@ -374,7 +326,7 @@ static void MX_MDF1_Init(void)
     MdfHandle0 structure initialization and HAL_MDF_Init function call
   */
   MdfHandle0.Instance = MDF1_Filter0;
-  MdfHandle0.Init.CommonParam.InterleavedFilters = 0;
+  MdfHandle0.Init.CommonParam.InterleavedFilters = 1;
   MdfHandle0.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle0.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
@@ -408,10 +360,46 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig0.DiscardSamples = 0;
 
   /**
+    MdfHandle1 structure initialization and HAL_MDF_Init function call
+  */
+  MdfHandle1.Instance = MDF1_Filter1;
+  MdfHandle1.Init.CommonParam.InterleavedFilters = 1;
+  MdfHandle1.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle1.Init.CommonParam.OutputClock.Activation = ENABLE;
+  MdfHandle1.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
+  MdfHandle1.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle1.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
+  MdfHandle1.Init.SerialInterface.Activation = DISABLE;
+  if (HAL_MDF_Init(&MdfHandle1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /**
+    MdfFilterConfig1, MdfOldConfig1 and/or MdfScdConfig1 structures initialization
+
+    WARNING : only structures are filled, no specific init function call for filter
+  */
+  MdfFilterConfig1.DataSource = MDF_DATA_SOURCE_BSMX;
+  MdfFilterConfig1.Delay = 0;
+  MdfFilterConfig1.CicMode = MDF_ONE_FILTER_SINC5;
+  MdfFilterConfig1.DecimationRatio = 16;
+  MdfFilterConfig1.Offset = 0;
+  MdfFilterConfig1.Gain = 0;
+  MdfFilterConfig1.ReshapeFilter.Activation = ENABLE;
+  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig1.HighPassFilter.Activation = ENABLE;
+  MdfFilterConfig1.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
+  MdfFilterConfig1.Integrator.Activation = DISABLE;
+  MdfFilterConfig1.AcquisitionMode = MDF_MODE_ASYNC_CONT;
+  MdfFilterConfig1.FifoThreshold = MDF_FIFO_THRESHOLD_NOT_EMPTY;
+  MdfFilterConfig1.DiscardSamples = 0;
+
+  /**
     MdfHandle2 structure initialization and HAL_MDF_Init function call
   */
   MdfHandle2.Instance = MDF1_Filter2;
-  MdfHandle2.Init.CommonParam.InterleavedFilters = 0;
+  MdfHandle2.Init.CommonParam.InterleavedFilters = 1;
   MdfHandle2.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle2.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
@@ -426,28 +414,8 @@ static void MX_MDF1_Init(void)
   {
     Error_Handler();
   }
-
-  /**
-    MdfFilterConfig2, MdfOldConfig2 and/or MdfScdConfig2 structures initialization
-
-    WARNING : only structures are filled, no specific init function call for filter
-  */
-  MdfFilterConfig2.DataSource = MDF_DATA_SOURCE_BSMX;
-  MdfFilterConfig2.Delay = 0;
-  MdfFilterConfig2.CicMode = MDF_ONE_FILTER_SINC5;
-  MdfFilterConfig2.DecimationRatio = 16;
-  MdfFilterConfig2.Offset = 0;
-  MdfFilterConfig2.Gain = -15;
-  MdfFilterConfig2.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig2.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
-  MdfFilterConfig2.HighPassFilter.Activation = ENABLE;
-  MdfFilterConfig2.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
-  MdfFilterConfig2.Integrator.Activation = DISABLE;
-  MdfFilterConfig2.SoundActivity.Activation = DISABLE;
-  MdfFilterConfig2.AcquisitionMode = MDF_MODE_ASYNC_CONT;
-  MdfFilterConfig2.FifoThreshold = MDF_FIFO_THRESHOLD_NOT_EMPTY;
-  MdfFilterConfig2.DiscardSamples = 0;
   /* USER CODE BEGIN MDF1_Init 2 */
+  __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
 
   /* USER CODE END MDF1_Init 2 */
 
@@ -748,7 +716,14 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_MDF_AcqCpltCallback(MDF_HandleTypeDef *hmdf)
+{
+  /* Keep callback short / non-blocking: mark buffer ready for main loop to send */
+  INTLVD_ready = 1;
 
+  /* NOTE : This function should not be modified, when the function is needed,
+            the HAL_MDF_AcqCpltCallback could be implemented in the user file */
+}
 /* USER CODE END 4 */
 
 /**
