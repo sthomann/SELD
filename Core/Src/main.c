@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stm32u5xx_hal_mdf.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -58,11 +59,11 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 MDF_DmaConfigTypeDef pDmaConfig;
 
-/* Increase buffer to hold, for example, 256 samples (128 pairs) */
+// Interleaved DMA buffer definition and flag (INTLVD_ready)
 #define SAMPLES_COUNT 256 
 volatile int32_t INTLVD[SAMPLES_COUNT];
-
 uint8_t INTLVD_ready = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,7 +107,6 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  pDmaConfig.MsbOnly = DISABLE;
 
 
   /* USER CODE END Init */
@@ -128,16 +128,25 @@ int main(void)
   MX_USART1_UART_Init();
   MX_MDF1_Init();
   /* USER CODE BEGIN 2 */
+
+  // set up the mdf's dma transfer config
+  pDmaConfig.MsbOnly = DISABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
-  pDmaConfig.DataLength = SAMPLES_COUNT * 4; // Length is in Bytes for MDF DMA config
+  pDmaConfig.DataLength = SAMPLES_COUNT * 4; 
   
 
-  // start interleaved transfer
-  // 2. Start the Interface provider (Handle 2) purely to generate the Clock
-  HAL_MDF_AcqStart(&MdfHandle2, NULL); // Just start it to enable the SITF/Clock
+
+  /* start interleaved transfer  */
+
+
+  // HAL_MDF_AcqStart(&MdfHandle2, NULL);
+
+  // start filter 1
   HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1);
 
-  HAL_StatusTypeDef st1 = HAL_MDF_AcqStart_DMA(&MdfHandle0, &MdfFilterConfig0, &pDmaConfig);
+
+  // sart filter 0 with DMA as the interleaved data goes through filter 0
+  HAL_StatusTypeDef st1 = HAL_MDF_AcqStart_DMA(&MdfHandle0, &MdfFilterConfig0, &pDmaConfig); 
 
   if(st1 != HAL_OK){
     HAL_UART_Transmit(&huart1, &st1, sizeof(st1), HAL_MAX_DELAY);
@@ -156,7 +165,7 @@ int main(void)
     {
       if (INTLVD_ready)
       {
-        
+        // for debugging transmit over uart
         HAL_UART_Transmit(&huart1, (uint8_t*)INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
         INTLVD_ready = 0;
       }
@@ -435,7 +444,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 460800;
+  huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -716,7 +725,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_MDF_AcqCpltCallback(MDF_HandleTypeDef *hmdf)
 {
-  /* Keep callback short / non-blocking: mark buffer ready for main loop to send */
+  // set flag to 1
   INTLVD_ready = 1;
 
   /* NOTE : This function should not be modified, when the function is needed,
