@@ -122,8 +122,6 @@ void Error_Handler(void);
 #define OCTOSPI_R_IO2_GPIO_Port GPIOF
 #define OCTOSPI_R_IO1_Pin GPIO_PIN_9
 #define OCTOSPI_R_IO1_GPIO_Port GPIOF
-#define MIC_3V_Pin GPIO_PIN_5
-#define MIC_3V_GPIO_Port GPIOF
 #define OCTOSPI_F_IO3_Pin GPIO_PIN_3
 #define OCTOSPI_F_IO3_GPIO_Port GPIOF
 #define OCTOSPI_F_CLK_P_Pin GPIO_PIN_4
