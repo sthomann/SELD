@@ -147,7 +147,6 @@ int main(void)
     HAL_UART_Transmit(&huart1, &st2, sizeof(st2), HAL_MAX_DELAY);
     HAL_Delay(HAL_MAX_DELAY);
   }
-   int8_t spacer = 1;
   
   /* USER CODE END 2 */
 
@@ -159,7 +158,6 @@ int main(void)
       {
         
         HAL_UART_Transmit(&huart1, (uint8_t*)INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
-        HAL_UART_Transmit(&huart1, &spacer, sizeof(spacer), HAL_MAX_DELAY);
         INTLVD_ready = 0;
       }
     }
@@ -499,10 +497,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOH, LED_RED_Pin|LED_GREEN_Pin|Mems_VL53_xshut_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOF, MIC_3V_Pin|Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOF, Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : WRLS_FLOW_Pin Mems_VLX_GPIO_Pin Mems_INT_LPS22HH_Pin */
   GPIO_InitStruct.Pin = WRLS_FLOW_Pin|Mems_VLX_GPIO_Pin|Mems_INT_LPS22HH_Pin;
@@ -640,13 +638,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_USB;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : MIC_3V_Pin Mems_STSAFE_RESET_Pin WRLS_WKUP_W_Pin */
-  GPIO_InitStruct.Pin = MIC_3V_Pin|Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
-
   /*Configure GPIO pins : MIC_SDINx_Pin MIC_CCK0_Pin */
   GPIO_InitStruct.Pin = MIC_SDINx_Pin|MIC_CCK0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -703,6 +694,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_UCPD_CC2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Mems_STSAFE_RESET_Pin WRLS_WKUP_W_Pin */
+  GPIO_InitStruct.Pin = Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Mems_ISM330DLC_INT1_Pin */
   GPIO_InitStruct.Pin = Mems_ISM330DLC_INT1_Pin;
