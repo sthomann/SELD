@@ -26,7 +26,9 @@ extern "C" {
 #endif
 /* Includes ------------------------------------------------------------------*/
 
-#include "stm32{family}xx_hal.h"
+#include "stm32u5xx_hal.h"
+#include "stm32u5xx_hal_sd.h"
+// #include "core_cm33.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -48,13 +50,13 @@ extern "C" {
  * Notice: This is applicable only for cortex M7 based platform.
  */
 
-#define ENABLE_SD_DMA_CACHE_MAINTENANCE  1
+#define ENABLE_SD_DMA_CACHE_MAINTENANCE  0
 
 
-extern SD_HandleTypeDef hsd_sdmmc1;
+extern SD_HandleTypeDef hsd1;
 
 /* Default handle used in sd_diskio.c file */
-#define sdmmc_handle hsd_sdmmc1
+#define sdmmc_handle hsd1
 
 /* Default Init function of sdmmc IP used in sd_diskio.c file */
 #if (ENABLE_SD_INIT == 1)

@@ -45,11 +45,25 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    FATFS_CUSTOM/APP/app_sd_audio.c
+    FATFS_CUSTOM/Drivers/sd_diskio_dma_standalone.c
+    FATFS_CUSTOM/Source/diskio.c
+    FATFS_CUSTOM/Source/ff_gen_drv.c
+    FATFS_CUSTOM/Source/ff.c
+    FATFS_CUSTOM/Source/ffsystem_baremetal.c
+    FATFS_CUSTOM/Source/ffsystem_cmsis_os.c
+    FATFS_CUSTOM/Source/ffsystem_template.c
+    FATFS_CUSTOM/Source/ffunicode.c # not strictly necessary
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    FATFS_CUSTOM/APP
+    FATFS_CUSTOM/Drivers
+    FATFS_CUSTOM/Source
+    Drivers/CMSIS/Include
+    Drivers/CMSIS/Device/ST/STM32U5xx/Include
 )
 
 # Add project symbols (macros)

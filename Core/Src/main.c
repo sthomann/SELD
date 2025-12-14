@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
+#include "app_sd_audio.h"
+#include "sd_diskio_dma_standalone.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +55,8 @@ DMA_NodeTypeDef Node_GPDMA1_Channel0;
 DMA_QListTypeDef List_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
+SD_HandleTypeDef hsd1;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -60,8 +64,13 @@ MDF_DmaConfigTypeDef pDmaConfig;
 
 // Interleaved DMA buffer definition and flag (INTLVD_ready)
 #define SAMPLES_COUNT 256 
+#define TEXT_BUFFER_SIZE 256
 volatile int32_t INTLVD[SAMPLES_COUNT];
 uint8_t INTLVD_ready = 0;
+
+char TextBuffer[TEXT_BUFFER_SIZE + 1];
+uint32_t BytesRead;
+int32_t readStatus;
 
 /* USER CODE END PV */
 
@@ -73,19 +82,14 @@ static void MX_GPDMA1_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_MDF1_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-  int _write(int file, char *ptr, int len)
-  {
-    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
 
-    return len;
-  }
-  
 
 /* USER CODE END 0 */
 
@@ -126,12 +130,50 @@ int main(void)
   MX_ICACHE_Init();
   MX_USART1_UART_Init();
   MX_MDF1_Init();
+  MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
+
+
+
+/*Initialise SD card and print root directory */
+
+if(SD_Audio_Init() != AUDIO_OK) printf("audio not initialised");
+else {
+  printf("SD Card mounted successfully.\n");
+  SD_Audio_ListRootFiles();
+}
+
+
+/* Read off of SD card */
+if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
+  while (1){
+    readStatus = SD_Audio_ReadData((uint8_t*)TextBuffer, TEXT_BUFFER_SIZE, &BytesRead);
+
+    //if end of file exit loop
+    if (readStatus == 1) break;
+    //if error
+    else if (readStatus != AUDIO_OK){
+        printf("failed");
+        break; 
+    }
+
+    TextBuffer[BytesRead] = '\0'; 
+    // print file
+    printf("%s", TextBuffer);
+  }
+
+  SD_Audio_StopRecording();
+}
+// 10 s delay to read off of serial monitor
+HAL_Delay(10000);
 
 
   // HAL_SD_CardInfoTypeDef pCardInfo;
 
-  // Test SDMMC1
+
+
+  /* Test SDMMC1 */
+
   // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
   pDmaConfig.MsbOnly = ENABLE;
@@ -140,11 +182,13 @@ int main(void)
   
 
 
+
+
   /* start interleaved transfer  */
 
+  // TODO: Clean up into a custom function when we aren't debugging anymore
 
-  // HAL_MDF_AcqStart(&MdfHandle2, NULL);
-
+  
   // start filter 1
   HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1);
 
@@ -433,6 +477,37 @@ static void MX_MDF1_Init(void)
 }
 
 /**
+  * @brief SDMMC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SDMMC1_SD_Init(void)
+{
+
+  /* USER CODE BEGIN SDMMC1_Init 0 */
+
+  /* USER CODE END SDMMC1_Init 0 */
+
+  /* USER CODE BEGIN SDMMC1_Init 1 */
+
+  /* USER CODE END SDMMC1_Init 1 */
+  hsd1.Instance = SDMMC1;
+  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
+  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd1.Init.ClockDiv = 0;
+  if (HAL_SD_Init(&hsd1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SDMMC1_Init 2 */
+
+  /* USER CODE END SDMMC1_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -448,7 +523,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 460800;
+  huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
