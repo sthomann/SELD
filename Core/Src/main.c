@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stm32u5xx_hal_mdf.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -129,8 +128,13 @@ int main(void)
   MX_MDF1_Init();
   /* USER CODE BEGIN 2 */
 
+
+  // HAL_SD_CardInfoTypeDef pCardInfo;
+
+  // Test SDMMC1
+  // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
-  pDmaConfig.MsbOnly = DISABLE;
+  pDmaConfig.MsbOnly = ENABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
   pDmaConfig.DataLength = SAMPLES_COUNT * 4; 
   
@@ -321,8 +325,8 @@ static void MX_MDF1_Init(void)
 {
 
   /* USER CODE BEGIN MDF1_Init 0 */
-  MdfHandle0.Init.FilterBistream = MDF_BITSTREAM2_FALLING;
-  MdfHandle1.Init.FilterBistream = MDF_BITSTREAM2_RISING;
+  MdfHandle0.Init.FilterBistream = MDF_BITSTREAM2_RISING; // mic with nice headers
+  MdfHandle1.Init.FilterBistream = MDF_BITSTREAM2_FALLING; // mic with habsburg headers
 
   /* USER CODE END MDF1_Init 0 */
 
@@ -337,7 +341,7 @@ static void MX_MDF1_Init(void)
   MdfHandle0.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle0.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle0.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle0.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle0.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle0) != HAL_OK)
@@ -357,7 +361,7 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig0.Offset = 0;
   MdfFilterConfig0.Gain = 0;
   MdfFilterConfig0.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
   MdfFilterConfig0.HighPassFilter.Activation = ENABLE;
   MdfFilterConfig0.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
   MdfFilterConfig0.Integrator.Activation = DISABLE;
@@ -374,7 +378,7 @@ static void MX_MDF1_Init(void)
   MdfHandle1.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle1.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle1.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle1.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle1.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle1.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle1.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle1) != HAL_OK)
@@ -394,7 +398,7 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig1.Offset = 0;
   MdfFilterConfig1.Gain = 0;
   MdfFilterConfig1.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
   MdfFilterConfig1.HighPassFilter.Activation = ENABLE;
   MdfFilterConfig1.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
   MdfFilterConfig1.Integrator.Activation = DISABLE;
@@ -410,7 +414,7 @@ static void MX_MDF1_Init(void)
   MdfHandle2.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle2.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle2.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle2.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle2.Init.SerialInterface.Activation = ENABLE;
   MdfHandle2.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
@@ -422,7 +426,7 @@ static void MX_MDF1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN MDF1_Init 2 */
-  __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
+  // __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
 
   /* USER CODE END MDF1_Init 2 */
 
@@ -444,7 +448,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 460800;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
