@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stm32u5xx_hal_mdf.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -26,6 +25,8 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
+#include "app_sd_audio.h"
+#include "sd_diskio_dma_standalone.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,6 +55,8 @@ DMA_NodeTypeDef Node_GPDMA1_Channel0;
 DMA_QListTypeDef List_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
+SD_HandleTypeDef hsd1;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -61,8 +64,13 @@ MDF_DmaConfigTypeDef pDmaConfig;
 
 // Interleaved DMA buffer definition and flag (INTLVD_ready)
 #define SAMPLES_COUNT 256 
+#define TEXT_BUFFER_SIZE 256
 volatile int32_t INTLVD[SAMPLES_COUNT];
 uint8_t INTLVD_ready = 0;
+
+char TextBuffer[TEXT_BUFFER_SIZE + 1];
+uint32_t BytesRead;
+int32_t readStatus;
 
 /* USER CODE END PV */
 
@@ -74,19 +82,14 @@ static void MX_GPDMA1_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_MDF1_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-  int _write(int file, char *ptr, int len)
-  {
-    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
 
-    return len;
-  }
-  
 
 /* USER CODE END 0 */
 
@@ -127,20 +130,65 @@ int main(void)
   MX_ICACHE_Init();
   MX_USART1_UART_Init();
   MX_MDF1_Init();
+  MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
 
+
+
+/*Initialise SD card and print root directory */
+
+if(SD_Audio_Init() != AUDIO_OK) printf("audio not initialised");
+else {
+  printf("SD Card mounted successfully.\n");
+  SD_Audio_ListRootFiles();
+}
+
+
+/* Read off of SD card */
+if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
+  while (1){
+    readStatus = SD_Audio_ReadData((uint8_t*)TextBuffer, TEXT_BUFFER_SIZE, &BytesRead);
+
+    //if end of file exit loop
+    if (readStatus == 1) break;
+    //if error
+    else if (readStatus != AUDIO_OK){
+        printf("failed");
+        break; 
+    }
+
+    TextBuffer[BytesRead] = '\0'; 
+    // print file
+    printf("%s", TextBuffer);
+  }
+
+  SD_Audio_StopRecording();
+}
+// 10 s delay to read off of serial monitor
+HAL_Delay(10000);
+
+
+  // HAL_SD_CardInfoTypeDef pCardInfo;
+
+
+
+  /* Test SDMMC1 */
+
+  // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
-  pDmaConfig.MsbOnly = DISABLE;
+  pDmaConfig.MsbOnly = ENABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
   pDmaConfig.DataLength = SAMPLES_COUNT * 4; 
   
 
 
+
+
   /* start interleaved transfer  */
 
+  // TODO: Clean up into a custom function when we aren't debugging anymore
 
-  // HAL_MDF_AcqStart(&MdfHandle2, NULL);
-
+  
   // start filter 1
   HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1);
 
@@ -321,8 +369,8 @@ static void MX_MDF1_Init(void)
 {
 
   /* USER CODE BEGIN MDF1_Init 0 */
-  MdfHandle0.Init.FilterBistream = MDF_BITSTREAM2_FALLING;
-  MdfHandle1.Init.FilterBistream = MDF_BITSTREAM2_RISING;
+  MdfHandle0.Init.FilterBistream = MDF_BITSTREAM2_RISING; // mic with nice headers
+  MdfHandle1.Init.FilterBistream = MDF_BITSTREAM2_FALLING; // mic with habsburg headers
 
   /* USER CODE END MDF1_Init 0 */
 
@@ -337,7 +385,7 @@ static void MX_MDF1_Init(void)
   MdfHandle0.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle0.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle0.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle0.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle0.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle0) != HAL_OK)
@@ -357,7 +405,7 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig0.Offset = 0;
   MdfFilterConfig0.Gain = 0;
   MdfFilterConfig0.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
   MdfFilterConfig0.HighPassFilter.Activation = ENABLE;
   MdfFilterConfig0.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
   MdfFilterConfig0.Integrator.Activation = DISABLE;
@@ -374,7 +422,7 @@ static void MX_MDF1_Init(void)
   MdfHandle1.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle1.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle1.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle1.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle1.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle1.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle1.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle1) != HAL_OK)
@@ -394,7 +442,7 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig1.Offset = 0;
   MdfFilterConfig1.Gain = 0;
   MdfFilterConfig1.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
   MdfFilterConfig1.HighPassFilter.Activation = ENABLE;
   MdfFilterConfig1.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
   MdfFilterConfig1.Integrator.Activation = DISABLE;
@@ -410,7 +458,7 @@ static void MX_MDF1_Init(void)
   MdfHandle2.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle2.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle2.Init.CommonParam.OutputClock.Divider = 4;
+  MdfHandle2.Init.CommonParam.OutputClock.Divider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle2.Init.SerialInterface.Activation = ENABLE;
   MdfHandle2.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
@@ -422,9 +470,40 @@ static void MX_MDF1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN MDF1_Init 2 */
-  __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
+  // __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
 
   /* USER CODE END MDF1_Init 2 */
+
+}
+
+/**
+  * @brief SDMMC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SDMMC1_SD_Init(void)
+{
+
+  /* USER CODE BEGIN SDMMC1_Init 0 */
+
+  /* USER CODE END SDMMC1_Init 0 */
+
+  /* USER CODE BEGIN SDMMC1_Init 1 */
+
+  /* USER CODE END SDMMC1_Init 1 */
+  hsd1.Instance = SDMMC1;
+  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
+  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd1.Init.ClockDiv = 0;
+  if (HAL_SD_Init(&hsd1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SDMMC1_Init 2 */
+
+  /* USER CODE END SDMMC1_Init 2 */
 
 }
 
