@@ -216,7 +216,7 @@ static DRESULT SD_DMA_read(BYTE lun, BYTE *buff, LBA_t sector, UINT count)
 }
 
 /**
- * @brief  Write data from sd card into a buffer
+ * @brief  Write data from sd card into a buffer - other way around
  * @param  lun : not used
  * @param  *buff: Data to be written
  * @param  sector: Sector address (LBA)

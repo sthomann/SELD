@@ -1,16 +1,17 @@
+
+/**
+  ******************************************************************************
+  * @file    app_sd_audio.c
+  * @author  Me and Google Gemini
+  * @brief   Starter application file for verification of library
+  ******************************************************************************
+  * 
+  *
+  ******************************************************************************
+  */
+
 #include "app_sd_audio.h"
 #include <string.h>
-
-
-
-
-
-/* AI GEN STARTING POINT, REMEMBER TO MODIFY WAV ETC LATER
-
-TODO!!!
-
-
-*/
 
 /* --- Global Variables for FatFs --- */
 FATFS SD_FatFs;             /* File system object for SD card */
@@ -81,21 +82,16 @@ static FRESULT Update_WAV_Header(void)
 }
 
 /**
-  * @brief  Initializes SD Card and Mounts File System
+  * @brief  Initializes SD Card and Mounts File System (also)
   */
-int32_t SD_Audio_Init(void)
-{
+int32_t SD_Audio_Init(void){
     /* 1. Link the SD Driver */
-    /* If your driver is named something else, change &SD_Driver here */
-    if (FATFS_LinkDriver(&SD_DMA_Driver, SD_Path) != 0)
-    {
+    if (FATFS_LinkDriver(&SD_DMA_Driver, SD_Path) != 0){
         return AUDIO_ERROR;
     }
-
     /* 2. Mount the SD Card */
     /* Force mount (1) to check if card is inserted immediately */
-    if (f_mount(&SD_FatFs, (TCHAR const*)SD_Path, 1) != FR_OK)
-    {
+    if (f_mount(&SD_FatFs, (TCHAR const*)SD_Path, 1) != FR_OK){
         return AUDIO_ERROR;
     }
 

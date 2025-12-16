@@ -25,8 +25,12 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
+#include "app_pipeline.h"
 #include "app_sd_audio.h"
+#include "ff.h"
 #include "sd_diskio_dma_standalone.h"
+#include "stm32u5xx_hal_gpio.h"
+#include "stm32u5xx_hal_mdf.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -63,14 +67,26 @@ UART_HandleTypeDef huart1;
 MDF_DmaConfigTypeDef pDmaConfig;
 
 // Interleaved DMA buffer definition and flag (INTLVD_ready)
-#define SAMPLES_COUNT 256 
+#define SAMPLES_COUNT 1024 
+#define SAMPLES_BYTES SAMPLES_COUNT*4
 #define TEXT_BUFFER_SIZE 256
-volatile int32_t INTLVD[SAMPLES_COUNT];
+volatile uint8_t INTLVD[SAMPLES_BYTES];
 uint8_t INTLVD_ready = 0;
+int32_t bytes_recorded = 0;
+
+uint8_t MDF_DMA_ERROR_FLAG = 0;
+
+volatile uint8_t* sd_buffer1 = INTLVD;
+volatile uint8_t* sd_buffer2 = INTLVD;
+
+
 
 char TextBuffer[TEXT_BUFFER_SIZE + 1];
 uint32_t BytesRead;
 int32_t readStatus;
+// extern FIL SD_File_PIPELINE;
+// extern uint32_t bytes_to_read;
+
 
 /* USER CODE END PV */
 
@@ -166,7 +182,12 @@ if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
 }
 // 10 s delay to read off of serial monitor
 HAL_Delay(10000);
-
+if(SD_Pipeline_Init() != PIPELINE_OK){
+  printf("init of sd failed\n");
+}
+if(SD_Pipeline_NewRec("Rec", 0, 48000, 2, 32,5)!=PIPELINE_OK){
+  printf("init of pipeline failed\n");
+}
 
   // HAL_SD_CardInfoTypeDef pCardInfo;
 
@@ -190,20 +211,18 @@ HAL_Delay(10000);
 
   
   // start filter 1
-  HAL_StatusTypeDef st2 = HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1);
+  
 
-
+  if(HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1) != HAL_OK){
+    printf("2nd filter failed");
+    HAL_Delay(HAL_MAX_DELAY);
+  }
   // sart filter 0 with DMA as the interleaved data goes through filter 0
-  HAL_StatusTypeDef st1 = HAL_MDF_AcqStart_DMA(&MdfHandle0, &MdfFilterConfig0, &pDmaConfig); 
-
-  if(st1 != HAL_OK){
-    HAL_UART_Transmit(&huart1, &st1, sizeof(st1), HAL_MAX_DELAY);
-    HAL_Delay(HAL_MAX_DELAY);
+  if(HAL_MDF_AcqStart_DMA(&MdfHandle0, &MdfFilterConfig0, &pDmaConfig) != HAL_OK){
+    printf("DMA failed\n");
+    f_close(&SD_File_PIPELINE);
   }
-   if(st2 != HAL_OK){
-    HAL_UART_Transmit(&huart1, &st2, sizeof(st2), HAL_MAX_DELAY);
-    HAL_Delay(HAL_MAX_DELAY);
-  }
+   
   
   /* USER CODE END 2 */
 
@@ -214,9 +233,9 @@ HAL_Delay(10000);
       if (INTLVD_ready)
       {
         // for debugging transmit over uart
-        HAL_UART_Transmit(&huart1, (uint8_t*)INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
-        INTLVD_ready = 0;
+        HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
       }
+      else HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
     }
     /* USER CODE END WHILE */
 
@@ -805,10 +824,39 @@ static void MX_GPIO_Init(void)
 void HAL_MDF_AcqCpltCallback(MDF_HandleTypeDef *hmdf)
 {
   // set flag to 1
-  INTLVD_ready = 1;
+   int32_t temp = (bytes_to_read<bytes_recorded) ? bytes_to_read : bytes_recorded;
+  if(temp > 0){
+    UINT bytesWritten;
+  if(f_write(&SD_File_PIPELINE, sd_buffer1, temp, &bytesWritten) != FR_OK){
 
+    MDF_DMA_ERROR_FLAG = 1;
+    Error_Handler();
+  }
+  bytes_to_read = bytes_to_read - 2048;
+  }
+  else{
+    INTLVD_ready = 1;
+    SD_Pipeline_StopRec();
+  }
   /* NOTE : This function should not be modified, when the function is needed,
             the HAL_MDF_AcqCpltCallback could be implemented in the user file */
+}
+void HAL_MDF_AcqHalfCpltCallback(MDF_HandleTypeDef *hmdf){
+  int32_t temp = (bytes_to_read<bytes_recorded) ? bytes_to_read : bytes_recorded;
+  if(temp > 0){
+    UINT bytesWritten;
+  volatile uint8_t* sd_buffer2 = INTLVD + 2048;
+  if(f_write(&SD_File_PIPELINE, sd_buffer2, temp, &bytesWritten) != FR_OK){
+
+    MDF_DMA_ERROR_FLAG = 1;
+    Error_Handler();
+  }
+  bytes_to_read = bytes_to_read - 2048;
+  }
+  else{
+    INTLVD_ready = 1;
+    SD_Pipeline_StopRec();
+  }
 }
 /* USER CODE END 4 */
 
