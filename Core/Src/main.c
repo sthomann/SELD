@@ -29,6 +29,7 @@
 #include "app_sd_audio.h"
 #include "ff.h"
 #include "sd_diskio_dma_standalone.h"
+#include "stm32u5xx_hal.h"
 #include "stm32u5xx_hal_gpio.h"
 #include "stm32u5xx_hal_mdf.h"
 /* USER CODE END Includes */
@@ -71,14 +72,15 @@ MDF_DmaConfigTypeDef pDmaConfig;
 #define SAMPLES_BYTES SAMPLES_COUNT*4
 #define TEXT_BUFFER_SIZE 256
 volatile uint8_t INTLVD[SAMPLES_BYTES];
-uint8_t INTLVD_ready = 0;
+uint8_t  INTLVD_ready = 0;
 int32_t bytes_recorded = 0;
 
 uint8_t MDF_DMA_ERROR_FLAG = 0;
 
-volatile uint8_t* sd_buffer1 = INTLVD;
+volatile uint8_t* sd_buffer1 = INTLVD + 2048;
 volatile uint8_t* sd_buffer2 = INTLVD;
 
+volatile uint8_t CPLT, HALFCPLT = 0;
 
 
 char TextBuffer[TEXT_BUFFER_SIZE + 1];
@@ -151,45 +153,45 @@ int main(void)
 
 
 
-/*Initialise SD card and print root directory */
+// /*Initialise SD card and print root directory */
 
-if(SD_Audio_Init() != AUDIO_OK) printf("audio not initialised");
-else {
-  printf("SD Card mounted successfully.\n");
-  SD_Audio_ListRootFiles();
-}
+// if(SD_Audio_Init() != AUDIO_OK) printf("audio not initialised");
+// else {
+//   printf("SD Card mounted successfully.\n");
+//   SD_Audio_ListRootFiles();
+// }
 
 
-/* Read off of SD card */
-if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
-  while (1){
-    readStatus = SD_Audio_ReadData((uint8_t*)TextBuffer, TEXT_BUFFER_SIZE, &BytesRead);
+// /* Read off of SD card */
+// if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
+//   while (1){
+//     readStatus = SD_Audio_ReadData((uint8_t*)TextBuffer, TEXT_BUFFER_SIZE, &BytesRead);
 
-    //if end of file exit loop
-    if (readStatus == 1) break;
-    //if error
-    else if (readStatus != AUDIO_OK){
-        printf("failed");
-        break; 
-    }
+//     //if end of file exit loop
+//     if (readStatus == 1) break;
+//     //if error
+//     else if (readStatus != AUDIO_OK){
+//         printf("failed");
+//         break; 
+//     }
 
-    TextBuffer[BytesRead] = '\0'; 
-    // print file
-    printf("%s", TextBuffer);
-  }
+//     TextBuffer[BytesRead] = '\0'; 
+//     // print file
+//     printf("%s", TextBuffer);
+//   }
 
-  SD_Audio_StopRecording();
-}
-// 10 s delay to read off of serial monitor
-HAL_Delay(10000);
+//   SD_Audio_StopRecording();
+// }
+// // 10 s delay to read off of serial monitor
+// HAL_Delay(10000);
 if(SD_Pipeline_Init() != PIPELINE_OK){
   printf("init of sd failed\n");
 }
-if(SD_Pipeline_NewRec("Rec", 0, 48000, 2, 32,5)!=PIPELINE_OK){
+if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
   printf("init of pipeline failed\n");
 }
 
-  // HAL_SD_CardInfoTypeDef pCardInfo;
+//   // HAL_SD_CardInfoTypeDef pCardInfo;
 
 
 
@@ -222,7 +224,8 @@ if(SD_Pipeline_NewRec("Rec", 0, 48000, 2, 32,5)!=PIPELINE_OK){
     printf("DMA failed\n");
     f_close(&SD_File_PIPELINE);
   }
-   
+  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET);
+
   
   /* USER CODE END 2 */
 
@@ -230,13 +233,45 @@ if(SD_Pipeline_NewRec("Rec", 0, 48000, 2, 32,5)!=PIPELINE_OK){
   /* USER CODE BEGIN WHILE */
     while (1)
     {
+
+      //if transfer complete
       if (INTLVD_ready)
       {
-        // for debugging transmit over uart
-        HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+        SD_Pipeline_StopRec(); 
+        printf("SUCCESS! File creation complete");
+        INTLVD_ready = 0;
+        while(1){
+          HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+          HAL_Delay(200);
+        }
+        if(f_sync(&SD_File_PIPELINE)){
+          printf("f sync failed");
+        }
+        if(f_close(&SD_File_PIPELINE)){
+          printf("f close failed");
+        }
+
       }
-      else HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+      
+      // 2. Handle DMA Errors (from previous discussion)
+      if (MDF_DMA_ERROR_FLAG) {
+          // Handle error, maybe call SD_Pipeline_StopRec() if not already stopped
+          printf("MDF DMA ERROR");
+          MDF_DMA_ERROR_FLAG = 0; 
+          while(1){
+          HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+          HAL_Delay(200);
+          }
+      }
+      //HANDLE DMAS
+      if(HALFCPLT){
+        
+      }
+      if(CPLT){
+
+      }
     }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -821,43 +856,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
 void HAL_MDF_AcqCpltCallback(MDF_HandleTypeDef *hmdf)
 {
   // set flag to 1
-   int32_t temp = (bytes_to_read<bytes_recorded) ? bytes_to_read : bytes_recorded;
-  if(temp > 0){
-    UINT bytesWritten;
-  if(f_write(&SD_File_PIPELINE, sd_buffer1, temp, &bytesWritten) != FR_OK){
-
-    MDF_DMA_ERROR_FLAG = 1;
-    Error_Handler();
-  }
-  bytes_to_read = bytes_to_read - 2048;
-  }
-  else{
-    INTLVD_ready = 1;
-    SD_Pipeline_StopRec();
-  }
-  /* NOTE : This function should not be modified, when the function is needed,
-            the HAL_MDF_AcqCpltCallback could be implemented in the user file */
+  CPLT = 1;
 }
 void HAL_MDF_AcqHalfCpltCallback(MDF_HandleTypeDef *hmdf){
-  int32_t temp = (bytes_to_read<bytes_recorded) ? bytes_to_read : bytes_recorded;
-  if(temp > 0){
-    UINT bytesWritten;
-  volatile uint8_t* sd_buffer2 = INTLVD + 2048;
-  if(f_write(&SD_File_PIPELINE, sd_buffer2, temp, &bytesWritten) != FR_OK){
-
-    MDF_DMA_ERROR_FLAG = 1;
-    Error_Handler();
-  }
-  bytes_to_read = bytes_to_read - 2048;
-  }
-  else{
-    INTLVD_ready = 1;
-    SD_Pipeline_StopRec();
-  }
+  HALFCPLT = 1;
 }
+
 /* USER CODE END 4 */
 
 /**

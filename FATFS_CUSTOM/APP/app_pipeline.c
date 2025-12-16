@@ -75,6 +75,7 @@ int32_t SD_Pipeline_NewRec(const char* filename,
 
 // stop recording 
 uint32_t SD_Pipeline_StopRec(){
+    f_sync(&SD_File_PIPELINE);
     return f_close(&SD_File_PIPELINE);
 }
 
@@ -122,12 +123,15 @@ static FRESULT Write_WAV_Header(uint32_t sample_rate,
     f_lseek(&SD_File_PIPELINE, 0);
     
     /* Overwrite placeholder with real header */
-    return f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
+    f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
+    return f_sync(&SD_File_PIPELINE);
+    
 }
+   
 
 /**
-  * @brief  Initialises and mounts a FAT SD card
-  */
+* @brief  Initialises and mounts a FAT SD card
+*/
 int32_t SD_Pipeline_Init(void){
     /* 1. Link the SD Driver */
     if (FATFS_LinkDriver(&SD_DMA_Driver, SD_Path_PIPELINE) != 0){
