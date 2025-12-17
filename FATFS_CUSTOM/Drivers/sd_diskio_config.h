@@ -34,7 +34,7 @@ extern "C" {
 /* Private define ------------------------------------------------------------*/
 
 /* Maximum waiting time to do an operation in the HAL_SD_ReadBlocks() and HAL_SD_WriteBlocks() */
-#define SD_TIMEOUT 30 * 1000
+#define SD_TIMEOUT 5 * 1000
 
 /*
  * Depending on the usecase, the SD card initialization could be done at the
