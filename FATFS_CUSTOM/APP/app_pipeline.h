@@ -43,4 +43,7 @@ int32_t SD_Pipeline_NewRec(const char* filename,
 
 //deInit?
 uint32_t SD_Pipeline_StopRec();
+
+int32_t SD_Pipeline_Write(uint8_t* pData, uint32_t size);
+
 #endif /* APP_PIPELINE_H */

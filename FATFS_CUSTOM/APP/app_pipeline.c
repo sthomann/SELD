@@ -1,4 +1,3 @@
-
 /**
   ******************************************************************************
   * @file    app_pipeline.c
@@ -14,6 +13,7 @@
 
 #include "app_pipeline.h"
 #include "ff.h"
+#include "stm32u5xx_hal_mdf.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -53,7 +53,7 @@ int32_t SD_Pipeline_NewRec(const char* filename,
     
     // filename calc
     char fname [64];
-    snprintf(fname, 64, "%s_%lu.WAV", filename, (unsigned long)rec_number);
+    snprintf(fname, 64, "%s_%lu.TXT", filename, (unsigned long)rec_number);
     //create file
     if(f_open(&SD_File_PIPELINE, fname, FA_CREATE_ALWAYS | FA_WRITE  ) != FR_OK){
         return PIPELINE_ERROR;
@@ -72,6 +72,27 @@ int32_t SD_Pipeline_NewRec(const char* filename,
     return PIPELINE_OK;
 }
 
+//record
+int32_t SD_Pipeline_Write(uint8_t* pData, uint32_t size) {
+    UINT bytesWritten;
+
+    if ((uint32_t)pData % 32 != 0) {
+        printf("FAILED ALIGNMENT! Buffer: 0x%lX (Remainder: %lu)\n", (uint32_t)pData, (uint32_t)pData % 32);
+    }
+    // printf("[SD] Attempting f write. Size: %lu bytes.\n", size);
+
+    FRESULT res = f_write(&SD_File_PIPELINE, pData, size, &bytesWritten);
+    if (res != FR_OK) {
+        printf("F_WRITE FAILED! Error Code: %d\n", res);
+        return PIPELINE_ERROR;
+    }
+    // printf("[SD] Write SUCCESS. Wrote %u bytes.\n", bytesWritten);
+    if(bytesWritten != size) {
+        printf("WRITE SIZE MISMATCH! Requested %lu, Wrote %u\n", size, bytesWritten);
+    }
+
+    return PIPELINE_OK;
+}
 
 // stop recording 
 uint32_t SD_Pipeline_StopRec(){
@@ -119,12 +140,12 @@ static FRESULT Write_WAV_Header(uint32_t sample_rate,
     memcpy(&header[36], "data", 4);
     memcpy(&header[40], &subChunk2Size, 4);
 
-    /* Move pointer to beginning of file */
+    /* Move pointer to beginning of file and allocate whole memory */
+    f_lseek(&SD_File_PIPELINE, bytes_to_read);
     f_lseek(&SD_File_PIPELINE, 0);
     
     /* Overwrite placeholder with real header */
-    f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
-    return f_sync(&SD_File_PIPELINE);
+    return f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
     
 }
    

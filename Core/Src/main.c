@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @bri%uef          : Main program body
   ******************************************************************************
   * @attention
   *
@@ -67,25 +67,25 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 MDF_DmaConfigTypeDef pDmaConfig;
 
-// Interleaved DMA buffer definition and flag (INTLVD_ready)
-#define SAMPLES_COUNT 1024 
+/* -------------buffers for DMAs----(setup)---- */
+#define SAMPLES_COUNT 256 
+
+
 #define SAMPLES_BYTES SAMPLES_COUNT*4
-#define TEXT_BUFFER_SIZE 256
-volatile uint8_t INTLVD[SAMPLES_BYTES];
+#define HALFSAMPLES SAMPLES_BYTES/2
+volatile uint32_t INTLVD[SAMPLES_COUNT] __attribute__((aligned(32)));
 uint8_t  INTLVD_ready = 0;
 int32_t bytes_recorded = 0;
 
 uint8_t MDF_DMA_ERROR_FLAG = 0;
 
-volatile uint8_t* sd_buffer1 = INTLVD + 2048;
-volatile uint8_t* sd_buffer2 = INTLVD;
+volatile uint32_t* sd_buffer1 = INTLVD;
+volatile uint32_t* sd_buffer2 = INTLVD + SAMPLES_COUNT/2;
 
+/* --------DMA FLAGS-------------*/
 volatile uint8_t CPLT, HALFCPLT = 0;
 
 
-char TextBuffer[TEXT_BUFFER_SIZE + 1];
-uint32_t BytesRead;
-int32_t readStatus;
 // extern FIL SD_File_PIPELINE;
 // extern uint32_t bytes_to_read;
 
@@ -107,7 +107,13 @@ static void MX_SDMMC1_SD_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+  int _write(int file, char *ptr, int len)
+  {
+    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
 
+    return len;
+  }
+  
 
 /* USER CODE END 0 */
 
@@ -152,38 +158,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 
-
-// /*Initialise SD card and print root directory */
-
-// if(SD_Audio_Init() != AUDIO_OK) printf("audio not initialised");
-// else {
-//   printf("SD Card mounted successfully.\n");
-//   SD_Audio_ListRootFiles();
-// }
-
-
-// /* Read off of SD card */
-// if (SD_Audio_OpenForRead("HELLO_~1.TXT") == AUDIO_OK){
-//   while (1){
-//     readStatus = SD_Audio_ReadData((uint8_t*)TextBuffer, TEXT_BUFFER_SIZE, &BytesRead);
-
-//     //if end of file exit loop
-//     if (readStatus == 1) break;
-//     //if error
-//     else if (readStatus != AUDIO_OK){
-//         printf("failed");
-//         break; 
-//     }
-
-//     TextBuffer[BytesRead] = '\0'; 
-//     // print file
-//     printf("%s", TextBuffer);
-//   }
-
-//   SD_Audio_StopRecording();
-// }
-// // 10 s delay to read off of serial monitor
-// HAL_Delay(10000);
+  /*--------------INITIALISE WAV FILE TO BE WRITTEN----------*/
 if(SD_Pipeline_Init() != PIPELINE_OK){
   printf("init of sd failed\n");
 }
@@ -193,30 +168,20 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
 
 //   // HAL_SD_CardInfoTypeDef pCardInfo;
 
+printf("%lX\n",(uint32_t)sd_buffer1);
+printf("%lX\n",(uint32_t) sd_buffer2);
 
-
-  /* Test SDMMC1 */
+  /* -----------SETUP THE MICROPHONE ACQUISITION--------------*/
 
   // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
   pDmaConfig.MsbOnly = ENABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
   pDmaConfig.DataLength = SAMPLES_COUNT * 4; 
-  
-
-
-
 
   /* start interleaved transfer  */
-
-  // TODO: Clean up into a custom function when we aren't debugging anymore
-
-  
-  // start filter 1
-  
-
   if(HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1) != HAL_OK){
-    printf("2nd filter failed");
+    printf("2nd filter failed\n");
     HAL_Delay(HAL_MAX_DELAY);
   }
   // sart filter 0 with DMA as the interleaved data goes through filter 0
@@ -231,44 +196,95 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+
+  /*-----------HANDLE THE SD CARD TRANSFER LOGIC-----------------*/
     while (1)
     {
 
       //if transfer complete
       if (INTLVD_ready)
       {
+        for(int32_t i = 0; i<20; i++){
+          printf("%lu\n", sd_buffer1[i]);
+        }
+        HAL_MDF_AcqStop_DMA(&MdfHandle0);
+        
         SD_Pipeline_StopRec(); 
-        printf("SUCCESS! File creation complete");
+        printf("SUCCESS! File creation complete\n");
         INTLVD_ready = 0;
+
+        if(f_sync(&SD_File_PIPELINE)){
+          printf("f sync failed\n");
+        }
+        if(f_close(&SD_File_PIPELINE)){
+          printf("f close failed\n");
+        }
         while(1){
           HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
           HAL_Delay(200);
         }
-        if(f_sync(&SD_File_PIPELINE)){
-          printf("f sync failed");
-        }
-        if(f_close(&SD_File_PIPELINE)){
-          printf("f close failed");
-        }
-
       }
       
       // 2. Handle DMA Errors (from previous discussion)
       if (MDF_DMA_ERROR_FLAG) {
-          // Handle error, maybe call SD_Pipeline_StopRec() if not already stopped
-          printf("MDF DMA ERROR");
-          MDF_DMA_ERROR_FLAG = 0; 
-          while(1){
-          HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
-          HAL_Delay(200);
-          }
-      }
-      //HANDLE DMAS
-      if(HALFCPLT){
+        // Handle error, maybe call SD_Pipeline_StopRec() if not already stopped
+        printf("MDF DMA ERROR");
+        MDF_DMA_ERROR_FLAG = 0; 
+
         
+        while(1){
+        HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+        HAL_Delay(200);
+        }
+      }
+      //HANDLE DMA INTERRUPT CALLS
+      if(HALFCPLT){
+        //unset flag
+        HALFCPLT = 0;
+
+        //calculate how many bytes are left in audio recording
+        int32_t temp = (bytes_to_read<HALFSAMPLES) ? bytes_to_read : HALFSAMPLES;
+
+        //if more than zero, continue - else set flag for completed transfer
+        if(temp > 0){
+        
+        if(SD_Pipeline_Write((uint8_t*) sd_buffer1, temp) != PIPELINE_OK){
+
+          MDF_DMA_ERROR_FLAG = 1;
+          while(1){
+        HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+        HAL_Delay(200);
+        }
+        }
+        bytes_to_read = bytes_to_read - temp;
+        }
+        else{
+          INTLVD_ready = 1;
+        }
       }
       if(CPLT){
+        //unset flag
+        CPLT = 0;
 
+        //calculate how many bytes are left in audio recording
+        int32_t temp = (bytes_to_read<HALFSAMPLES) ? bytes_to_read : HALFSAMPLES;
+
+        //if more than zero, continue - else set flag for completed transfer
+        if(temp > 0){
+        if(SD_Pipeline_Write((uint8_t*) sd_buffer2, temp) != PIPELINE_OK){
+
+          MDF_DMA_ERROR_FLAG = 1;
+          while(1){
+            HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+            HAL_Delay(200);
+            }
+        }
+        bytes_to_read = bytes_to_read - temp;
+        }
+        else{
+          INTLVD_ready = 1;
+        }
       }
     }
 
