@@ -29,9 +29,13 @@
 #include "app_sd_audio.h"
 #include "ff.h"
 #include "sd_diskio_dma_standalone.h"
+#include "stm32u5xx.h"
 #include "stm32u5xx_hal.h"
+#include "stm32u5xx_hal_conf.h"
+#include "stm32u5xx_hal_def.h"
 #include "stm32u5xx_hal_gpio.h"
 #include "stm32u5xx_hal_mdf.h"
+#include "stm32u5xx_hal_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,23 +72,26 @@ UART_HandleTypeDef huart1;
 MDF_DmaConfigTypeDef pDmaConfig;
 
 /* -------------buffers for DMAs----(setup)---- */
-#define SAMPLES_COUNT 256 
+#define SAMPLES_COUNT 1024
 
 
-#define SAMPLES_BYTES SAMPLES_COUNT*4
-#define HALFSAMPLES SAMPLES_BYTES/2
-volatile uint32_t INTLVD[SAMPLES_COUNT] __attribute__((aligned(32)));
-uint8_t  INTLVD_ready = 0;
+#define SAMPLES_BYTES SAMPLES_COUNT*2
+#define HALFSAMPLES SAMPLES_COUNT/2
+#define HALFSAMPLESBYTES SAMPLES_BYTES/2
+volatile int16_t INTLVD[SAMPLES_COUNT] __attribute__((aligned(32)));
+int8_t  INTLVD_ready = 0;
 int32_t bytes_recorded = 0;
 
 uint8_t MDF_DMA_ERROR_FLAG = 0;
 
-volatile uint32_t* sd_buffer1 = INTLVD;
-volatile uint32_t* sd_buffer2 = INTLVD + SAMPLES_COUNT/2;
+// uint16_t SDBUFFER1[SAMPLES_COUNT/2] __attribute__((aligned(32)));
+// uint16_t SDBUFFER2[SAMPLES_COUNT/2] __attribute__((aligned(32)));
+volatile uint16_t* SDBUFFER1 = INTLVD;
+volatile uint16_t* SDBUFFER2 = INTLVD + HALFSAMPLES;
 
 /* --------DMA FLAGS-------------*/
 volatile uint8_t CPLT, HALFCPLT = 0;
-
+uint8_t MDFTESTFLAG = 0;
 
 // extern FIL SD_File_PIPELINE;
 // extern uint32_t bytes_to_read;
@@ -168,16 +175,13 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
 
 //   // HAL_SD_CardInfoTypeDef pCardInfo;
 
-printf("%lX\n",(uint32_t)sd_buffer1);
-printf("%lX\n",(uint32_t) sd_buffer2);
-
   /* -----------SETUP THE MICROPHONE ACQUISITION--------------*/
 
   // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
   pDmaConfig.MsbOnly = ENABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
-  pDmaConfig.DataLength = SAMPLES_COUNT * 4; 
+  pDmaConfig.DataLength = SAMPLES_COUNT * 2; 
 
   /* start interleaved transfer  */
   if(HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1) != HAL_OK){
@@ -196,39 +200,35 @@ printf("%lX\n",(uint32_t) sd_buffer2);
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
+  if(MDFTESTFLAG){
+    printf("debug initiated\n");
+    while(1){
+      if(CPLT){
+        CPLT = 0;
+        HAL_UART_Transmit(&huart1, INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
+      }
+    }
+  }
 
   /*-----------HANDLE THE SD CARD TRANSFER LOGIC-----------------*/
     while (1)
     {
-
+      
       //if transfer complete
       if (INTLVD_ready)
       {
-        for(int32_t i = 0; i<20; i++){
-          printf("%lu\n", sd_buffer1[i]);
-        }
         HAL_MDF_AcqStop_DMA(&MdfHandle0);
         
         SD_Pipeline_StopRec(); 
         printf("SUCCESS! File creation complete\n");
         INTLVD_ready = 0;
-
-        if(f_sync(&SD_File_PIPELINE)){
-          printf("f sync failed\n");
-        }
-        if(f_close(&SD_File_PIPELINE)){
-          printf("f close failed\n");
-        }
         while(1){
           HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
           HAL_Delay(200);
         }
       }
       
-      // 2. Handle DMA Errors (from previous discussion)
       if (MDF_DMA_ERROR_FLAG) {
-        // Handle error, maybe call SD_Pipeline_StopRec() if not already stopped
         printf("MDF DMA ERROR");
         MDF_DMA_ERROR_FLAG = 0; 
 
@@ -244,42 +244,33 @@ printf("%lX\n",(uint32_t) sd_buffer2);
         HALFCPLT = 0;
 
         //calculate how many bytes are left in audio recording
-        int32_t temp = (bytes_to_read<HALFSAMPLES) ? bytes_to_read : HALFSAMPLES;
+        int32_t temp = (bytes_to_read<HALFSAMPLESBYTES) ? bytes_to_read : HALFSAMPLESBYTES;
 
         //if more than zero, continue - else set flag for completed transfer
         if(temp > 0){
-        
-        if(SD_Pipeline_Write((uint8_t*) sd_buffer1, temp) != PIPELINE_OK){
-
-          MDF_DMA_ERROR_FLAG = 1;
-          while(1){
-        HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
-        HAL_Delay(200);
-        }
-        }
+        if(SD_Pipeline_Write((uint8_t*) SDBUFFER1, temp) != PIPELINE_OK)MDF_DMA_ERROR_FLAG = 1;
+          
+        // decrement bytes to read
         bytes_to_read = bytes_to_read - temp;
         }
         else{
           INTLVD_ready = 1;
         }
       }
+
+
+      //duplicate above logic
       if(CPLT){
         //unset flag
         CPLT = 0;
-
         //calculate how many bytes are left in audio recording
-        int32_t temp = (bytes_to_read<HALFSAMPLES) ? bytes_to_read : HALFSAMPLES;
+        int32_t temp = (bytes_to_read<HALFSAMPLESBYTES) ? bytes_to_read : HALFSAMPLESBYTES;
 
         //if more than zero, continue - else set flag for completed transfer
         if(temp > 0){
-        if(SD_Pipeline_Write((uint8_t*) sd_buffer2, temp) != PIPELINE_OK){
+        if(SD_Pipeline_Write((uint8_t*) SDBUFFER2, temp) != PIPELINE_OK) MDF_DMA_ERROR_FLAG = 1;
 
-          MDF_DMA_ERROR_FLAG = 1;
-          while(1){
-            HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
-            HAL_Delay(200);
-            }
-        }
+        //decrement bytes to read
         bytes_to_read = bytes_to_read - temp;
         }
         else{
@@ -471,13 +462,13 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig0.DataSource = MDF_DATA_SOURCE_BSMX;
   MdfFilterConfig0.Delay = 0;
   MdfFilterConfig0.CicMode = MDF_ONE_FILTER_SINC5;
-  MdfFilterConfig0.DecimationRatio = 16;
+  MdfFilterConfig0.DecimationRatio = 32;
   MdfFilterConfig0.Offset = 0;
   MdfFilterConfig0.Gain = 0;
   MdfFilterConfig0.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
+  MdfFilterConfig0.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
   MdfFilterConfig0.HighPassFilter.Activation = ENABLE;
-  MdfFilterConfig0.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
+  MdfFilterConfig0.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_00125FPCM;
   MdfFilterConfig0.Integrator.Activation = DISABLE;
   MdfFilterConfig0.SoundActivity.Activation = DISABLE;
   MdfFilterConfig0.AcquisitionMode = MDF_MODE_ASYNC_CONT;
@@ -508,13 +499,13 @@ static void MX_MDF1_Init(void)
   MdfFilterConfig1.DataSource = MDF_DATA_SOURCE_BSMX;
   MdfFilterConfig1.Delay = 0;
   MdfFilterConfig1.CicMode = MDF_ONE_FILTER_SINC5;
-  MdfFilterConfig1.DecimationRatio = 16;
+  MdfFilterConfig1.DecimationRatio = 32;
   MdfFilterConfig1.Offset = 0;
   MdfFilterConfig1.Gain = 0;
   MdfFilterConfig1.ReshapeFilter.Activation = ENABLE;
-  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_1;
+  MdfFilterConfig1.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
   MdfFilterConfig1.HighPassFilter.Activation = ENABLE;
-  MdfFilterConfig1.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_0025FPCM;
+  MdfFilterConfig1.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_00125FPCM;
   MdfFilterConfig1.Integrator.Activation = DISABLE;
   MdfFilterConfig1.AcquisitionMode = MDF_MODE_ASYNC_CONT;
   MdfFilterConfig1.FifoThreshold = MDF_FIFO_THRESHOLD_NOT_EMPTY;
@@ -652,10 +643,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(UCPD_PWR_GPIO_Port, UCPD_PWR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOH, LED_RED_Pin|LED_GREEN_Pin|Mems_VL53_xshut_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOH, LED_RED_Pin|LED_GREEN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(Mems_VL53_xshut_GPIO_Port, Mems_VL53_xshut_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin, GPIO_PIN_RESET);
