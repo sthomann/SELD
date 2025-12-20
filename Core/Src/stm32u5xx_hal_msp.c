@@ -111,15 +111,24 @@ void HAL_MDF_MspInit(MDF_HandleTypeDef* hmdf)
     /* Peripheral clock enable */
     __HAL_RCC_MDF1_CLK_ENABLE();
 
+    __HAL_RCC_GPIOE_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
     __HAL_RCC_GPIOF_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
     /**MDF1 GPIO Configuration
+    PE4     ------> MDF1_SDI3
     PG7     ------> MDF1_CCK0
     PF10     ------> MDF1_CCK1
     PB14     ------> MDF1_SDI2
     PB1     ------> MDF1_SDI0
     */
+    GPIO_InitStruct.Pin = GPIO_PIN_4;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF6_MDF1;
+    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
     GPIO_InitStruct.Pin = GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -227,11 +236,14 @@ void HAL_MDF_MspDeInit(MDF_HandleTypeDef* hmdf)
     __HAL_RCC_MDF1_CLK_DISABLE();
 
     /**MDF1 GPIO Configuration
+    PE4     ------> MDF1_SDI3
     PG7     ------> MDF1_CCK0
     PF10     ------> MDF1_CCK1
     PB14     ------> MDF1_SDI2
     PB1     ------> MDF1_SDI0
     */
+    HAL_GPIO_DeInit(GPIOE, GPIO_PIN_4);
+
     HAL_GPIO_DeInit(GPIOG, GPIO_PIN_7);
 
     HAL_GPIO_DeInit(MIC_CCK1_GPIO_Port, MIC_CCK1_Pin);

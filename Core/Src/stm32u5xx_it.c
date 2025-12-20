@@ -61,6 +61,7 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
 extern MDF_HandleTypeDef MdfHandle0;
 extern MDF_HandleTypeDef MdfHandle1;
 extern MDF_HandleTypeDef MdfHandle2;
+extern MDF_HandleTypeDef MdfHandle3;
 extern SD_HandleTypeDef hsd1;
 /* USER CODE BEGIN EV */
 

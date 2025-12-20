@@ -79,14 +79,14 @@ int32_t SD_Pipeline_Write(uint8_t* pData, uint32_t size) {
     if ((uint32_t)pData % 32 != 0) {
         printf("FAILED ALIGNMENT! Buffer: 0x%lX (Remainder: %lu)\n", (uint32_t)pData, (uint32_t)pData % 32);
     }
-    printf("[SD] Attempting f write. Size: %lu bytes.\n", size);
 
     FRESULT res = f_write(&SD_File_PIPELINE, pData, size, &bytesWritten);
     if (res != FR_OK) {
+        printf("[SD] Attempted f write. Size: %lu bytes.\n", size);
+
         printf("F_WRITE FAILED! Error Code: %d\n", res);
         return PIPELINE_ERROR;
     }
-    printf("[SD] Write SUCCESS. Wrote %u bytes.\n", bytesWritten);
     if(bytesWritten != size) {
         printf("WRITE SIZE MISMATCH! Requested %lu, Wrote %u\n", size, bytesWritten);
     }

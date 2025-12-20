@@ -60,6 +60,9 @@ MDF_FilterConfigTypeDef MdfFilterConfig0;
 MDF_HandleTypeDef MdfHandle1;
 MDF_FilterConfigTypeDef MdfFilterConfig1;
 MDF_HandleTypeDef MdfHandle2;
+MDF_FilterConfigTypeDef MdfFilterConfig2;
+MDF_HandleTypeDef MdfHandle3;
+MDF_FilterConfigTypeDef MdfFilterConfig3;
 DMA_NodeTypeDef Node_GPDMA1_Channel0;
 DMA_QListTypeDef List_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
@@ -72,7 +75,7 @@ UART_HandleTypeDef huart1;
 MDF_DmaConfigTypeDef pDmaConfig;
 
 /* -------------buffers for DMAs----(setup)---- */
-#define SAMPLES_COUNT 1024
+#define SAMPLES_COUNT 4096
 
 
 #define SAMPLES_BYTES SAMPLES_COUNT*2
@@ -86,8 +89,8 @@ uint8_t MDF_DMA_ERROR_FLAG = 0;
 
 // uint16_t SDBUFFER1[SAMPLES_COUNT/2] __attribute__((aligned(32)));
 // uint16_t SDBUFFER2[SAMPLES_COUNT/2] __attribute__((aligned(32)));
-volatile uint16_t* SDBUFFER1 = INTLVD;
-volatile uint16_t* SDBUFFER2 = INTLVD + HALFSAMPLES;
+volatile uint16_t* SDBUFFER1 = (uint16_t*)INTLVD;
+volatile uint16_t* SDBUFFER2 = (uint16_t*)INTLVD + HALFSAMPLES;
 
 /* --------DMA FLAGS-------------*/
 volatile uint8_t CPLT, HALFCPLT = 0;
@@ -169,7 +172,7 @@ int main(void)
 if(SD_Pipeline_Init() != PIPELINE_OK){
   printf("init of sd failed\n");
 }
-if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
+if(SD_Pipeline_NewRec("Rec", 1, 24000, 4, 16,10)!=PIPELINE_OK){
   printf("init of pipeline failed\n");
 }
 
@@ -186,6 +189,14 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
   /* start interleaved transfer  */
   if(HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1) != HAL_OK){
     printf("2nd filter failed\n");
+    HAL_Delay(HAL_MAX_DELAY);
+  }
+  if(HAL_MDF_AcqStart(&MdfHandle2, &MdfFilterConfig2) != HAL_OK){
+    printf("3rd filter failed\n");
+    HAL_Delay(HAL_MAX_DELAY);
+  }
+  if(HAL_MDF_AcqStart(&MdfHandle3, &MdfFilterConfig3) != HAL_OK){
+    printf("4th filter failed\n");
     HAL_Delay(HAL_MAX_DELAY);
   }
   // sart filter 0 with DMA as the interleaved data goes through filter 0
@@ -205,7 +216,7 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
     while(1){
       if(CPLT){
         CPLT = 0;
-        HAL_UART_Transmit(&huart1, INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
+        HAL_UART_Transmit(&huart1, (uint8_t*)INTLVD, sizeof(INTLVD), HAL_MAX_DELAY);
       }
     }
   }
@@ -261,6 +272,7 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
 
       //duplicate above logic
       if(CPLT){
+        // int32_t write_start = HAL_GetTick();
         //unset flag
         CPLT = 0;
         //calculate how many bytes are left in audio recording
@@ -272,6 +284,8 @@ if(SD_Pipeline_NewRec("Rec", 0, 22000, 2, 16,5)!=PIPELINE_OK){
 
         //decrement bytes to read
         bytes_to_read = bytes_to_read - temp;
+        // int32_t write_end = HAL_GetTick();
+        // printf("wrote %li bytes in %li ms\n",temp, write_end-write_start);
         }
         else{
           INTLVD_ready = 1;
@@ -442,7 +456,7 @@ static void MX_MDF1_Init(void)
     MdfHandle0 structure initialization and HAL_MDF_Init function call
   */
   MdfHandle0.Instance = MDF1_Filter0;
-  MdfHandle0.Init.CommonParam.InterleavedFilters = 1;
+  MdfHandle0.Init.CommonParam.InterleavedFilters = 3;
   MdfHandle0.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle0.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle0.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
@@ -479,7 +493,7 @@ static void MX_MDF1_Init(void)
     MdfHandle1 structure initialization and HAL_MDF_Init function call
   */
   MdfHandle1.Instance = MDF1_Filter1;
-  MdfHandle1.Init.CommonParam.InterleavedFilters = 1;
+  MdfHandle1.Init.CommonParam.InterleavedFilters = 3;
   MdfHandle1.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle1.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle1.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
@@ -515,7 +529,7 @@ static void MX_MDF1_Init(void)
     MdfHandle2 structure initialization and HAL_MDF_Init function call
   */
   MdfHandle2.Instance = MDF1_Filter2;
-  MdfHandle2.Init.CommonParam.InterleavedFilters = 1;
+  MdfHandle2.Init.CommonParam.InterleavedFilters = 3;
   MdfHandle2.Init.CommonParam.ProcClockDivider = 2;
   MdfHandle2.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle2.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
@@ -525,11 +539,73 @@ static void MX_MDF1_Init(void)
   MdfHandle2.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
   MdfHandle2.Init.SerialInterface.ClockSource = MDF_SITF_CCK0_SOURCE;
   MdfHandle2.Init.SerialInterface.Threshold = 4;
-  MdfHandle2.Init.FilterBistream = MDF_BITSTREAM2_FALLING;
+  MdfHandle2.Init.FilterBistream = MDF_BITSTREAM3_RISING;
   if (HAL_MDF_Init(&MdfHandle2) != HAL_OK)
   {
     Error_Handler();
   }
+
+  /**
+    MdfFilterConfig2, MdfOldConfig2 and/or MdfScdConfig2 structures initialization
+
+    WARNING : only structures are filled, no specific init function call for filter
+  */
+  MdfFilterConfig2.DataSource = MDF_DATA_SOURCE_BSMX;
+  MdfFilterConfig2.Delay = 0;
+  MdfFilterConfig2.CicMode = MDF_ONE_FILTER_SINC5;
+  MdfFilterConfig2.DecimationRatio = 32;
+  MdfFilterConfig2.Offset = 0;
+  MdfFilterConfig2.Gain = 0;
+  MdfFilterConfig2.ReshapeFilter.Activation = ENABLE;
+  MdfFilterConfig2.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig2.HighPassFilter.Activation = ENABLE;
+  MdfFilterConfig2.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_00125FPCM;
+  MdfFilterConfig2.Integrator.Activation = DISABLE;
+  MdfFilterConfig2.SoundActivity.Activation = DISABLE;
+  MdfFilterConfig2.AcquisitionMode = MDF_MODE_ASYNC_CONT;
+  MdfFilterConfig2.FifoThreshold = MDF_FIFO_THRESHOLD_NOT_EMPTY;
+  MdfFilterConfig2.DiscardSamples = 0;
+
+  /**
+    MdfHandle3 structure initialization and HAL_MDF_Init function call
+  */
+  MdfHandle3.Instance = MDF1_Filter3;
+  MdfHandle3.Init.CommonParam.InterleavedFilters = 3;
+  MdfHandle3.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle3.Init.CommonParam.OutputClock.Activation = ENABLE;
+  MdfHandle3.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
+  MdfHandle3.Init.CommonParam.OutputClock.Divider = 2;
+  MdfHandle3.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
+  MdfHandle3.Init.SerialInterface.Activation = ENABLE;
+  MdfHandle3.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
+  MdfHandle3.Init.SerialInterface.ClockSource = MDF_SITF_CCK0_SOURCE;
+  MdfHandle3.Init.SerialInterface.Threshold = 4;
+  MdfHandle3.Init.FilterBistream = MDF_BITSTREAM3_FALLING;
+  if (HAL_MDF_Init(&MdfHandle3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /**
+    MdfFilterConfig3, MdfOldConfig3 and/or MdfScdConfig3 structures initialization
+
+    WARNING : only structures are filled, no specific init function call for filter
+  */
+  MdfFilterConfig3.DataSource = MDF_DATA_SOURCE_BSMX;
+  MdfFilterConfig3.Delay = 0;
+  MdfFilterConfig3.CicMode = MDF_ONE_FILTER_SINC5;
+  MdfFilterConfig3.DecimationRatio = 32;
+  MdfFilterConfig3.Offset = 0;
+  MdfFilterConfig3.Gain = 0;
+  MdfFilterConfig3.ReshapeFilter.Activation = ENABLE;
+  MdfFilterConfig3.ReshapeFilter.DecimationRatio = MDF_RSF_DECIMATION_RATIO_4;
+  MdfFilterConfig3.HighPassFilter.Activation = ENABLE;
+  MdfFilterConfig3.HighPassFilter.CutOffFrequency = MDF_HPF_CUTOFF_0_00125FPCM;
+  MdfFilterConfig3.Integrator.Activation = DISABLE;
+  MdfFilterConfig3.SoundActivity.Activation = DISABLE;
+  MdfFilterConfig3.AcquisitionMode = MDF_MODE_ASYNC_CONT;
+  MdfFilterConfig3.FifoThreshold = MDF_FIFO_THRESHOLD_NOT_EMPTY;
+  MdfFilterConfig3.DiscardSamples = 0;
   /* USER CODE BEGIN MDF1_Init 2 */
   // __HAL_LINKDMA(&MdfHandle0, hdma, handle_GPDMA1_Channel0);
 
@@ -633,10 +709,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOI_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
