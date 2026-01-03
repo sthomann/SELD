@@ -72,7 +72,12 @@ SD_HandleTypeDef hsd1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-MDF_DmaConfigTypeDef pDmaConfig;
+// flag for next audio
+uint8_t NEXT_AUDIO = 0;
+/* ----number of back to back recordings ----*/
+
+uint32_t total = 4;
+uint32_t time = 1;
 
 /* -------------buffers for DMAs----(setup)---- */
 #define SAMPLES_COUNT 4096
@@ -95,9 +100,6 @@ volatile uint16_t* SDBUFFER2 = (uint16_t*)INTLVD + HALFSAMPLES;
 /* --------DMA FLAGS-------------*/
 volatile uint8_t CPLT, HALFCPLT = 0;
 uint8_t MDFTESTFLAG = 0;
-
-// extern FIL SD_File_PIPELINE;
-// extern uint32_t bytes_to_read;
 
 
 /* USER CODE END PV */
@@ -123,7 +125,8 @@ static void MX_SDMMC1_SD_Init(void);
 
     return len;
   }
-  
+  void start_recording(uint32_t number);
+
 
 /* USER CODE END 0 */
 
@@ -167,24 +170,28 @@ int main(void)
   MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
 
-
-  /*--------------INITIALISE WAV FILE TO BE WRITTEN----------*/
-if(SD_Pipeline_Init() != PIPELINE_OK){
-  printf("init of sd failed\n");
-}
-if(SD_Pipeline_NewRec("Rec", 1, 24000, 4, 16,10)!=PIPELINE_OK){
-  printf("init of pipeline failed\n");
-}
-
-//   // HAL_SD_CardInfoTypeDef pCardInfo;
-
   /* -----------SETUP THE MICROPHONE ACQUISITION--------------*/
 
   // auto st = HAL_SD_GetCardInfo(&hsd1, &pCardInfo);
   // set up the mdf's dma transfer config
+  MDF_DmaConfigTypeDef pDmaConfig;
   pDmaConfig.MsbOnly = ENABLE;
   pDmaConfig.Address = (uint32_t) INTLVD;
   pDmaConfig.DataLength = SAMPLES_COUNT * 2; 
+
+  if(SD_Pipeline_Init() != PIPELINE_OK){
+    printf("init of sd failed\n");
+  }
+
+
+
+void start_recording(uint32_t number){
+  
+  /*--------------INITIALISE WAV FILE TO BE WRITTEN----------*/
+  
+  if(SD_Pipeline_NewRec("birda", number, 16000, 4, 16,time)!=PIPELINE_OK){
+    printf("init of pipeline failed\n");
+  }
 
   /* start interleaved transfer  */
   if(HAL_MDF_AcqStart(&MdfHandle1, &MdfFilterConfig1) != HAL_OK){
@@ -204,7 +211,22 @@ if(SD_Pipeline_NewRec("Rec", 1, 24000, 4, 16,10)!=PIPELINE_OK){
     printf("DMA failed\n");
     f_close(&SD_File_PIPELINE);
   }
-  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET);
+}
+
+/* -----first recording -----*/
+
+
+start_recording(1);
+
+uint32_t iteration = total - 1;
+printf("starting new dataset!\n");
+for(int i = 1; i>0; i--){
+  printf("%d...\n", i);
+  HAL_Delay(1000);
+}
+printf("GO!\n");
+
+
 
   
   /* USER CODE END 2 */
@@ -228,15 +250,51 @@ if(SD_Pipeline_NewRec("Rec", 1, 24000, 4, 16,10)!=PIPELINE_OK){
       //if transfer complete
       if (INTLVD_ready)
       {
+        /* -------finish current transfer --------*/
         HAL_MDF_AcqStop_DMA(&MdfHandle0);
+        HAL_MDF_AcqStop(&MdfHandle1);
+        HAL_MDF_AcqStop(&MdfHandle2);
+        HAL_MDF_AcqStop(&MdfHandle3);
         
         SD_Pipeline_StopRec(); 
         printf("SUCCESS! File creation complete\n");
+
         INTLVD_ready = 0;
-        while(1){
-          HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
-          HAL_Delay(200);
+
+        /*----if necessary start next transfer ----*/
+        if(iteration > 0){
+
+          iteration--;
+          
+          // RECORDING
+          start_recording(total - iteration);
+
+          // Loop while waiting for button to be pressed to initiate next recoriding
+          while(NEXT_AUDIO == 0){}
+          NEXT_AUDIO = 0;
+          
+          printf("Started recording %ld!\n\n %ld recordings left!\n", total - iteration, iteration);
+          // // start recording before countdown, to avoid the starting blip
+          // // COUNT DOWN BEFORE RECORDING
+          // int timer = 2;
+          // printf("recording # %ld of %ld \n", total - iteration, total);
+          // for(int i = timer; i>0; i--){
+          //   printf("%d...\n", i);
+          //   HAL_Delay(1000);
+          // }
+          // printf("GO!\n");
+
+
+
         }
+        else{
+          printf("COMPLETE! :) \n");
+          while(1){
+            HAL_Delay(500);
+            HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+          }
+        }
+
       }
       
       if (MDF_DMA_ERROR_FLAG) {
@@ -328,7 +386,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV1;
   RCC_OscInitStruct.PLL.PLLM = 1;
   RCC_OscInitStruct.PLL.PLLN = 80;
-  RCC_OscInitStruct.PLL.PLLP = 26;
+  RCC_OscInitStruct.PLL.PLLP = 31;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_0;
@@ -457,10 +515,10 @@ static void MX_MDF1_Init(void)
   */
   MdfHandle0.Instance = MDF1_Filter0;
   MdfHandle0.Init.CommonParam.InterleavedFilters = 3;
-  MdfHandle0.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle0.Init.CommonParam.ProcClockDivider = 1;
   MdfHandle0.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle0.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle0.Init.CommonParam.OutputClock.Divider = 2;
+  MdfHandle0.Init.CommonParam.OutputClock.Divider = 5;
   MdfHandle0.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle0.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle0) != HAL_OK)
@@ -494,10 +552,10 @@ static void MX_MDF1_Init(void)
   */
   MdfHandle1.Instance = MDF1_Filter1;
   MdfHandle1.Init.CommonParam.InterleavedFilters = 3;
-  MdfHandle1.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle1.Init.CommonParam.ProcClockDivider = 1;
   MdfHandle1.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle1.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle1.Init.CommonParam.OutputClock.Divider = 2;
+  MdfHandle1.Init.CommonParam.OutputClock.Divider = 5;
   MdfHandle1.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle1.Init.SerialInterface.Activation = DISABLE;
   if (HAL_MDF_Init(&MdfHandle1) != HAL_OK)
@@ -530,10 +588,10 @@ static void MX_MDF1_Init(void)
   */
   MdfHandle2.Instance = MDF1_Filter2;
   MdfHandle2.Init.CommonParam.InterleavedFilters = 3;
-  MdfHandle2.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle2.Init.CommonParam.ProcClockDivider = 1;
   MdfHandle2.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle2.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle2.Init.CommonParam.OutputClock.Divider = 2;
+  MdfHandle2.Init.CommonParam.OutputClock.Divider = 5;
   MdfHandle2.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle2.Init.SerialInterface.Activation = ENABLE;
   MdfHandle2.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
@@ -571,10 +629,10 @@ static void MX_MDF1_Init(void)
   */
   MdfHandle3.Instance = MDF1_Filter3;
   MdfHandle3.Init.CommonParam.InterleavedFilters = 3;
-  MdfHandle3.Init.CommonParam.ProcClockDivider = 2;
+  MdfHandle3.Init.CommonParam.ProcClockDivider = 1;
   MdfHandle3.Init.CommonParam.OutputClock.Activation = ENABLE;
   MdfHandle3.Init.CommonParam.OutputClock.Pins = MDF_OUTPUT_CLOCK_0;
-  MdfHandle3.Init.CommonParam.OutputClock.Divider = 2;
+  MdfHandle3.Init.CommonParam.OutputClock.Divider = 5;
   MdfHandle3.Init.CommonParam.OutputClock.Trigger.Activation = DISABLE;
   MdfHandle3.Init.SerialInterface.Activation = ENABLE;
   MdfHandle3.Init.SerialInterface.Mode = MDF_SITF_LF_MASTER_SPI_MODE;
@@ -719,13 +777,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(UCPD_PWR_GPIO_Port, UCPD_PWR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOH, LED_RED_Pin|LED_GREEN_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOH, LED_RED_Pin|LED_GREEN_Pin|Mems_VL53_xshut_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Mems_VL53_xshut_GPIO_Port, Mems_VL53_xshut_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, Mems_STSAFE_RESET_Pin|WRLS_WKUP_W_Pin, GPIO_PIN_RESET);
@@ -826,6 +881,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_Button_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CustomBTN_Pin */
+  GPIO_InitStruct.Pin = CustomBTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(CustomBTN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PH4 PH5 */
   GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5;
@@ -935,6 +996,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Mems_ISM330DLC_INT1_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI6_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
