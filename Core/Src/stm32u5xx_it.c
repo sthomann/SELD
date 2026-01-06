@@ -211,11 +211,11 @@ void SysTick_Handler(void)
 void EXTI6_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI6_IRQn 0 */
-  NEXT_AUDIO = 1;
+  
   /* USER CODE END EXTI6_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(CustomBTN_Pin);
   /* USER CODE BEGIN EXTI6_IRQn 1 */
-
+  
   /* USER CODE END EXTI6_IRQn 1 */
 }
 

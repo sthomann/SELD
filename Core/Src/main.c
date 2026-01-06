@@ -87,7 +87,8 @@ uint32_t time = 1;
 #define HALFSAMPLES SAMPLES_COUNT/2
 #define HALFSAMPLESBYTES SAMPLES_BYTES/2
 volatile int16_t INTLVD[SAMPLES_COUNT] __attribute__((aligned(32)));
-int8_t  INTLVD_ready = 0;
+int8_t  INTLVD_ready = 1;
+uint8_t first = 1;
 int32_t bytes_recorded = 0;
 
 uint8_t MDF_DMA_ERROR_FLAG = 0;
@@ -213,19 +214,9 @@ void start_recording(uint32_t number){
   }
 }
 
-/* -----first recording -----*/
+uint32_t iteration = total;
 
-
-start_recording(1);
-
-uint32_t iteration = total - 1;
 printf("starting new dataset!\n");
-for(int i = 1; i>0; i--){
-  printf("%d...\n", i);
-  HAL_Delay(1000);
-}
-printf("GO!\n");
-
 
 
   
@@ -233,6 +224,8 @@ printf("GO!\n");
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  /* --------- test of microphone without SDCard --------*/
   if(MDFTESTFLAG){
     printf("debug initiated\n");
     while(1){
@@ -251,14 +244,18 @@ printf("GO!\n");
       if (INTLVD_ready)
       {
         /* -------finish current transfer --------*/
+        if(!first){
         HAL_MDF_AcqStop_DMA(&MdfHandle0);
         HAL_MDF_AcqStop(&MdfHandle1);
         HAL_MDF_AcqStop(&MdfHandle2);
         HAL_MDF_AcqStop(&MdfHandle3);
         
         SD_Pipeline_StopRec(); 
-        printf("SUCCESS! File creation complete\n");
-
+        printf("[Debug] SUCCESS! File creation complete\n");
+        }
+        else{
+          first = 0;
+        }
         INTLVD_ready = 0;
 
         /*----if necessary start next transfer ----*/
@@ -268,12 +265,12 @@ printf("GO!\n");
           
           // RECORDING
           start_recording(total - iteration);
-
+          printf("press btn for new recording\n");
+          NEXT_AUDIO = 0;
           // Loop while waiting for button to be pressed to initiate next recoriding
           while(NEXT_AUDIO == 0){}
-          NEXT_AUDIO = 0;
-          
-          printf("Started recording %ld!\n\n %ld recordings left!\n", total - iteration, iteration);
+
+          printf("Started recording %ld!\n\n%ld recordings left\n\n", total - iteration, iteration);
           // // start recording before countdown, to avoid the starting blip
           // // COUNT DOWN BEFORE RECORDING
           // int timer = 2;
@@ -885,7 +882,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : CustomBTN_Pin */
   GPIO_InitStruct.Pin = CustomBTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(CustomBTN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PH4 PH5 */
@@ -1015,6 +1012,10 @@ void HAL_MDF_AcqCpltCallback(MDF_HandleTypeDef *hmdf)
 }
 void HAL_MDF_AcqHalfCpltCallback(MDF_HandleTypeDef *hmdf){
   HALFCPLT = 1;
+}
+
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t button){
+  NEXT_AUDIO = 1;
 }
 
 /* USER CODE END 4 */
