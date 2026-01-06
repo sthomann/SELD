@@ -49,13 +49,14 @@ int32_t SD_Pipeline_NewRec(const char* filename,
         uint16_t channels,
         uint16_t bits_per_sample,
         uint32_t time){
-        
-    
+
     // filename calc
     char fname [64];
     snprintf(fname, 64, "%s_%lu.WAV", filename, (unsigned long)rec_number);
     //create file
-    if(f_open(&SD_File_PIPELINE, fname, FA_CREATE_ALWAYS | FA_WRITE  ) != FR_OK){
+    FRESULT open = f_open(&SD_File_PIPELINE, fname, FA_CREATE_ALWAYS | FA_WRITE);
+    if(open != FR_OK){
+        printf("[SD] f_open failed - error code: %d\n", open);
         return PIPELINE_ERROR;
     }
 
@@ -76,20 +77,19 @@ int32_t SD_Pipeline_NewRec(const char* filename,
 int32_t SD_Pipeline_Write(uint8_t* pData, uint32_t size) {
     UINT bytesWritten;
 
-    if ((uint32_t)pData % 32 != 0) {
-        printf("FAILED ALIGNMENT! Buffer: 0x%lX (Remainder: %lu)\n", (uint32_t)pData, (uint32_t)pData % 32);
-    }
-    printf("[SD] Attempting f write. Size: %lu bytes.\n", size);
+    if ((uint32_t)pData % 32 != 0) printf("FAILED ALIGNMENT! Buffer: 0x%lX (Remainder: %lu)\n", (uint32_t)pData, (uint32_t)pData % 32);
 
+    if (SD_File_PIPELINE.obj.fs != NULL && SD_File_PIPELINE.obj.id != SD_File_PIPELINE.obj.fs->id) 
+        printf("CRITICAL: Object ID Mismatch! (File: %d, FS: %d)\n", SD_File_PIPELINE.obj.id, SD_File_PIPELINE.obj.fs->id);
     FRESULT res = f_write(&SD_File_PIPELINE, pData, size, &bytesWritten);
     if (res != FR_OK) {
+
+        printf("[SD] Attempted f write. Size: %lu bytes.\n", size);
+
         printf("F_WRITE FAILED! Error Code: %d\n", res);
         return PIPELINE_ERROR;
     }
-    printf("[SD] Write SUCCESS. Wrote %u bytes.\n", bytesWritten);
-    if(bytesWritten != size) {
-        printf("WRITE SIZE MISMATCH! Requested %lu, Wrote %u\n", size, bytesWritten);
-    }
+    if(bytesWritten != size) printf("WRITE SIZE MISMATCH! Requested %lu, Wrote %u\n", size, bytesWritten);
 
     return PIPELINE_OK;
 }
@@ -141,11 +141,20 @@ static FRESULT Write_WAV_Header(uint32_t sample_rate,
     memcpy(&header[40], &subChunk2Size, 4);
 
     /* Move pointer to beginning of file and allocate whole memory */
-    f_lseek(&SD_File_PIPELINE, bytes_to_read + 44);
-    f_lseek(&SD_File_PIPELINE, 0);
+    FRESULT a = f_lseek(&SD_File_PIPELINE, bytes_to_read + 44);
+    FRESULT b = f_lseek(&SD_File_PIPELINE, 0);
+    if(a != b || a != FR_OK){
+        printf("[SD] f_lseek failed - error 1: %d error 2: %d\n", a, b);
+        hsd1;
+        
+        return PIPELINE_ERROR;
+    }
     
     /* Overwrite placeholder with real header */
-    return f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
+    FRESULT c = f_write(&SD_File_PIPELINE, header, 44, &bytesWritten);
+    if(c != FR_OK) printf("[SD] f_write failed to write WAV header - error: %d\n", c);
+
+    return PIPELINE_OK;
     
 }
    
@@ -154,13 +163,15 @@ static FRESULT Write_WAV_Header(uint32_t sample_rate,
 * @brief  Initialises and mounts a FAT SD card
 */
 int32_t SD_Pipeline_Init(void){
-    /* 1. Link the SD Driver */
+    /* Link the SD Driver */
+
     if (FATFS_LinkDriver(&SD_DMA_Driver, SD_Path_PIPELINE) != 0){
+        printf("Linker failed!\n");
         return PIPELINE_ERROR;
     }
     /* 2. Mount the SD Card */
-    /* Force mount (1) to check if card is inserted immediately */
     if (f_mount(&SD_FATFS_PIPELINE, (TCHAR const*)SD_Path_PIPELINE, 1) != FR_OK){
+        printf("Mounting failed!\n");
         return PIPELINE_ERROR;
     }
 

@@ -61,9 +61,10 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
 extern MDF_HandleTypeDef MdfHandle0;
 extern MDF_HandleTypeDef MdfHandle1;
 extern MDF_HandleTypeDef MdfHandle2;
+extern MDF_HandleTypeDef MdfHandle3;
 extern SD_HandleTypeDef hsd1;
 /* USER CODE BEGIN EV */
-
+extern uint8_t NEXT_AUDIO;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -203,6 +204,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32u5xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles EXTI Line6 interrupt.
+  */
+void EXTI6_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI6_IRQn 0 */
+  
+  /* USER CODE END EXTI6_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(CustomBTN_Pin);
+  /* USER CODE BEGIN EXTI6_IRQn 1 */
+  
+  /* USER CODE END EXTI6_IRQn 1 */
+}
 
 /**
   * @brief This function handles GPDMA1 Channel 0 global interrupt.
