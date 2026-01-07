@@ -45,7 +45,6 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    FATFS_CUSTOM/APP/app_sd_audio.c
     FATFS_CUSTOM/APP/app_pipeline.c
     FATFS_CUSTOM/Drivers/sd_diskio_dma_standalone.c
     FATFS_CUSTOM/Source/diskio.c

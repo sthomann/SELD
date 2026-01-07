@@ -26,7 +26,6 @@
 #include <inttypes.h>
 #include <math.h>
 #include "app_pipeline.h"
-#include "app_sd_audio.h"
 #include "ff.h"
 #include "sd_diskio_dma_standalone.h"
 #include "stm32u5xx.h"
